@@ -51,7 +51,7 @@ pub fn main(init: std.process.Init) !void {
     var syndrome:[]u1 = alloc.alloc(u1, p) catch unreachable;
     defer alloc.free(syndrome);
 
-    syndrome = make_syndrome(syndrome, word, p);
+    syndrome = make_syndrome(syndrome, new_word, p);
     try stdout.print("syndrome = {any}\n", .{syndrome});
 
     // const encoded_word = make_encoded_word(syndrome, new_word);
@@ -90,20 +90,20 @@ fn make_new_word(new_word:[]u8, word:[]u8) []u8 {
     return new_word;
 }
 
-fn make_syndrome(syndrome:[]u1, word:[]u8, p:usize) []u1 {
+fn make_syndrome(syndrome:[]u1, new_word:[]u8, p:usize) []u1 {
     // calculate the values of parity bits
     var k:usize = 0;
-    // var final_word:[word.len]u1 = undefined;
+    // var final_new_word:[new_word.len]u1 = undefined;
     while (k < p) : (k+=1){
         const p_pos = std.math.pow(usize, 2, k);
         var l:usize = 0;
         var sum:usize = 0;
-        while (l < word.len) : (l+=1) {
+        while (l < new_word.len) : (l+=1) {
             // wicked bit-wise AND trick to check position
             // basically all positions checked by parity bit k will have that bit set to 1
             // so doing k AND position will give us whether the bit should be checked
             if (((l+1) & p_pos) != 0) {
-                sum += if (word[l] != 'p') word[l]-'0' else 0;
+                sum += if (new_word[l] != 'p') new_word[l]-'0' else 0;
             }
         }
         std.debug.print("sum = {d}\n", .{sum});
