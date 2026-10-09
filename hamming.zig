@@ -54,8 +54,11 @@ pub fn main(init: std.process.Init) !void {
     syndrome = make_syndrome(syndrome, new_word, p);
     try stdout.print("syndrome = {any}\n", .{syndrome});
 
-    // const encoded_word = make_encoded_word(syndrome, new_word);
-    // try stdout.print("encoded_word = {any}\n", .{encoded_word});
+    var encoded_word = alloc.alloc(u1, new_word.len) catch unreachable;
+    defer alloc.free(encoded_word);
+
+    encoded_word = make_encoded_word(encoded_word, syndrome, new_word);
+    try stdout.print("encoded_word = {any}\n", .{encoded_word});
 }
 
 fn calculate_parity_bits(word_len:usize) usize {
@@ -82,9 +85,7 @@ fn make_new_word(new_word:[]u8, word:[]u8) []u8 {
         if (((i+1) & i) == 0) {
             new_word[i] = 'p';
         }
-        else {
-            new_word[i] = word[j];
-            j+=1;
+        else { new_word[i] = word[j]; j+=1;
         }
     }
     return new_word;
@@ -106,20 +107,20 @@ fn make_syndrome(syndrome:[]u1, new_word:[]u8, p:usize) []u1 {
                 sum += if (new_word[l] != 'p') new_word[l]-'0' else 0;
             }
         }
-        std.debug.print("sum = {d}\n", .{sum});
+        // std.debug.print("sum = {d}\n", .{sum});
         syndrome[k] = if (sum%2==0) 0 else 1;
     }
     return syndrome;
 }
 
-
-fn make_encoded_word(syndrome:[]u1, word:[]u8) []u1 {
-    var encoded_word: []u1 = undefined;
-    for (word, 0..) |bit, i| {
+fn make_encoded_word(encoded_word:[]u1, syndrome:[]u1, new_word:[]u8) []u1 {
+    var j:usize = 0;
+    for (new_word, 0..) |bit, i| {
         if (bit == 'p') {
-            encoded_word[i] = syndrome[std.math.floorPowerOfTwo(usize, i+1)];
+            encoded_word[i] = syndrome[j];
+            j+=1;
         } else {
-            encoded_word[i] = @intCast((word[i] - '0'));
+            encoded_word[i] = @intCast((new_word[i] - '0'));
         }
     }
     return encoded_word;
