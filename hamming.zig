@@ -18,12 +18,64 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     var stdout_writer = std.Io.File.stdout().writer(io, &.{});
     var stdin_reader = std.Io.File.stdin().reader(io, &.{});
-    var stdout = &stdout_writer.interface;
-    var stdin = &stdin_reader.interface;
+    const stdout = &stdout_writer.interface;
+    const stdin = &stdin_reader.interface;
 
-    var input_byte:[1]u8 = undefined;
     var input_word = std.ArrayList(u8).empty;
     defer input_word.deinit(alloc);
+
+    try stdout.print("Correct word: ", .{});
+    try take_input(&input_word, stdin);
+
+    const word:[]u8 = @constCast(std.mem.trimEnd(u8, input_word.items, "\r"));
+
+    // std.debug.print("{any}\n", .{word});
+
+    try stdout.print("Correct word data: \n", .{});
+    try perform_operations(stdout, @constCast(word));
+
+    var input_word2 = std.ArrayList(u8).empty;
+    defer input_word2.deinit(alloc);
+
+    try stdout.print("\nIncorrect word: ", .{});
+    try take_input(&input_word2, stdin);
+
+    const word2:[]u8 = @constCast(std.mem.trimEnd(u8, input_word2.items, "\r"));
+
+    try stdout.print("Incorrect word data: \n", .{});
+    try perform_operations(stdout, @constCast(word2));
+}
+
+fn perform_operations(stdout:anytype, word:[]u8) !void {
+    try stdout.print("[\n", .{});
+    try stdout.print("    word_len: {d}\n", .{word.len});
+    try stdout.print("    word: {s}\n", .{word});
+
+    const p = calculate_parity_bits(word.len);
+    try stdout.print("    p = {d}\n", .{p});
+
+    var new_word:[]u8 = alloc.alloc(u8, p + word.len) catch unreachable;
+    defer alloc.free(new_word);
+
+    new_word = make_new_word(new_word, word);
+    try stdout.print("    new_word = {s}\n", .{new_word});
+
+    var syndrome:[]u1 = alloc.alloc(u1, p) catch unreachable;
+    defer alloc.free(syndrome);
+
+    syndrome = make_syndrome(syndrome, new_word, p);
+    try stdout.print("    syndrome = {any}\n", .{syndrome});
+
+    var encoded_word = alloc.alloc(u1, new_word.len) catch unreachable;
+    defer alloc.free(encoded_word);
+
+    encoded_word = make_encoded_word(encoded_word, syndrome, new_word);
+    try stdout.print("    encoded_word = {any}\n", .{encoded_word});
+    try stdout.print("[\n", .{});
+}
+
+fn take_input(input_word:*std.array_list.Aligned(u8, null), stdin:anytype) !void {
+    var input_byte:[1]u8 = undefined;
 
     while (true) {
         stdin.readSliceAll(&input_byte) catch break;
@@ -33,32 +85,6 @@ pub fn main(init: std.process.Init) !void {
 
         try input_word.append(alloc, c);
     }
-    const word:[]u8 = @constCast(std.mem.trimEnd(u8, input_word.items, "\r"));
-    std.debug.print("{any}\n", .{word});
-
-    try stdout.print("word_len: {d}\n", .{word.len});
-    try stdout.print("word: {s}\n", .{word});
-
-    const p = calculate_parity_bits(word.len);
-    try stdout.print("p = {d}\n", .{p});
-
-    var new_word:[]u8 = alloc.alloc(u8, p + word.len) catch unreachable;
-    defer alloc.free(new_word);
-
-    new_word = make_new_word(new_word, word);
-    try stdout.print("new_word = {s}\n", .{new_word});
-
-    var syndrome:[]u1 = alloc.alloc(u1, p) catch unreachable;
-    defer alloc.free(syndrome);
-
-    syndrome = make_syndrome(syndrome, new_word, p);
-    try stdout.print("syndrome = {any}\n", .{syndrome});
-
-    var encoded_word = alloc.alloc(u1, new_word.len) catch unreachable;
-    defer alloc.free(encoded_word);
-
-    encoded_word = make_encoded_word(encoded_word, syndrome, new_word);
-    try stdout.print("encoded_word = {any}\n", .{encoded_word});
 }
 
 fn calculate_parity_bits(word_len:usize) usize {
