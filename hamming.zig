@@ -27,12 +27,12 @@ pub fn main(init: std.process.Init) !void {
     try stdout.print("Correct word: ", .{});
     try take_input(&input_word, stdin);
 
-    const word:[]u8 = @constCast(std.mem.trimEnd(u8, input_word.items, "\r"));
+    const word1:[]u8 = @constCast(std.mem.trimEnd(u8, input_word.items, "\r"));
 
     // std.debug.print("{any}\n", .{word});
 
     try stdout.print("Correct word data: \n", .{});
-    try perform_operations(stdout, @constCast(word));
+    try perform_operations(stdout, @constCast(word1));
 
     var input_word2 = std.ArrayList(u8).empty;
     defer input_word2.deinit(alloc);
@@ -44,6 +44,19 @@ pub fn main(init: std.process.Init) !void {
 
     try stdout.print("Incorrect word data: \n", .{});
     try perform_operations(stdout, @constCast(word2));
+
+    const result = check_for_errors(word1, word2);
+    switch(result) {
+        1 => std.debug.print("words must be the same length\n", .{}),
+        else => std.debug.print("happy :)\n", .{})
+    }
+}
+
+fn check_for_errors(word1:[]u8, word2:[]u8) u8 {
+    if (word1.len != word2.len) {
+        return 1;
+    }
+    return 0;
 }
 
 fn perform_operations(stdout:anytype, word:[]u8) !void {
@@ -91,13 +104,14 @@ fn calculate_parity_bits(word_len:usize) usize {
     // find the number of parity bits p
 
     // smart, "mathematical" solution
+    // this doesn't work sometimes
     var p:usize = 1;
     p = 1 + std.math.log2(word_len + p + 1);
 
     // imperative solution using a loop
-    // var i: usize = 0;
-    // while (std.math.pow(usize, 2, i) <= word_len+i+1) : (i+=1) {}
-    //
+    // var p: usize = 0;
+    while (std.math.pow(usize, 2, p) < word_len+p+1) : (p+=1) {}
+
     return p;
 }
 
@@ -111,7 +125,9 @@ fn make_new_word(new_word:[]u8, word:[]u8) []u8 {
         if (((i+1) & i) == 0) {
             new_word[i] = 'p';
         }
-        else { new_word[i] = word[j]; j+=1;
+        else {
+            new_word[i] = word[j];
+            j+=1;
         }
     }
     return new_word;
