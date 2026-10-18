@@ -22,72 +22,103 @@ pub fn main(init: std.process.Init) !void {
     const stdin = &stdin_reader.interface;
 
     var input_word = std.ArrayList(u8).empty;
-    defer input_word.deinit(alloc);
-
-    try stdout.print("Correct word: ", .{});
-    try take_input(&input_word, stdin);
-
-    const word1:[]u8 = @constCast(std.mem.trimEnd(u8, input_word.items, "\r"));
-
-    // std.debug.print("{any}\n", .{word});
-
-    try stdout.print("Correct word data: \n", .{});
-    try perform_operations(stdout, @constCast(word1));
-
     var input_word2 = std.ArrayList(u8).empty;
+    defer input_word.deinit(alloc);
     defer input_word2.deinit(alloc);
 
-    try stdout.print("\nIncorrect word: ", .{});
-    try take_input(&input_word2, stdin);
+    try stdout.print("Insert the correct word (without the parity bits): ", .{});
+    const word1:[]u8 = take_input(&input_word, stdin) catch unreachable;
 
-    const word2:[]u8 = @constCast(std.mem.trimEnd(u8, input_word2.items, "\r"));
-
-    try stdout.print("Incorrect word data: \n", .{});
-    try perform_operations(stdout, @constCast(word2));
-
-    const result = check_for_errors(word1, word2);
-    switch(result) {
-        1 => std.debug.print("words must be the same length\n", .{}),
-        else => std.debug.print("happy :)\n", .{})
-    }
-}
-
-fn check_for_errors(word1:[]u8, word2:[]u8) u8 {
-    if (word1.len != word2.len) {
-        return 1;
-    }
-    return 0;
-}
-
-fn perform_operations(stdout:anytype, word:[]u8) !void {
+    try stdout.print("Correct word data: \n", .{});
     try stdout.print("[\n", .{});
-    try stdout.print("    word_len: {d}\n", .{word.len});
-    try stdout.print("    word: {s}\n", .{word});
+    try stdout.print("    word_len: {d}\n", .{word1.len});
+    try stdout.print("    word: {s}\n", .{word1});
 
-    const p = calculate_parity_bits(word.len);
+    const p:usize = calculate_parity_bits(word1.len);
     try stdout.print("    p = {d}\n", .{p});
 
-    var new_word:[]u8 = alloc.alloc(u8, p + word.len) catch unreachable;
+    var new_word:[]u8 = alloc.alloc(u8, p + word1.len) catch unreachable;
     defer alloc.free(new_word);
 
-    new_word = make_new_word(new_word, word);
+    new_word = make_new_word(new_word, word1);
     try stdout.print("    new_word = {s}\n", .{new_word});
 
-    var syndrome:[]u1 = alloc.alloc(u1, p) catch unreachable;
-    defer alloc.free(syndrome);
+    var p_bits:[]u8 = alloc.alloc(u8, p) catch unreachable;
+    defer alloc.free(p_bits);
 
-    syndrome = make_syndrome(syndrome, new_word, p);
-    try stdout.print("    syndrome = {any}\n", .{syndrome});
+    p_bits = check_parity(p_bits, new_word, p);
+    try stdout.print("    p_bits = {s}\n", .{p_bits});
 
-    var encoded_word = alloc.alloc(u1, new_word.len) catch unreachable;
-    defer alloc.free(encoded_word);
+    var codeword1:[]u8 = alloc.alloc(u8, new_word.len) catch unreachable;
+    var codeword2:[]u8 = alloc.alloc(u8, new_word.len) catch unreachable;
+    defer {
+        alloc.free(codeword1);
+        alloc.free(codeword2);
+    }
 
-    encoded_word = make_encoded_word(encoded_word, syndrome, new_word);
-    try stdout.print("    encoded_word = {any}\n", .{encoded_word});
+    codeword1 = make_codeword(codeword1, p_bits, new_word);
+    try stdout.print("    codeword = {s}\n", .{codeword1});
     try stdout.print("[\n", .{});
+
+    try stdout.print("\nInsert the incorrect word (without the parity bits): ", .{});
+    const word2:[]u8 = take_input(&input_word2, stdin) catch unreachable;
+
+    var new_word2:[]u8 = alloc.alloc(u8, p + word2.len) catch unreachable;
+    defer alloc.free(new_word2);
+    new_word2 = make_new_word(new_word2, word2);
+    codeword2 = make_codeword(codeword2, p_bits, new_word2);
+
+    const number_of_errors = check_for_errors(word1, word2) catch |err| {
+        std.debug.print("Error: {}\n", .{err});
+        std.debug.print("Words must be the same length\n", .{});
+        return err;
+    };
+
+    if (number_of_errors == 1) {
+        const fixed_word:[]u8, const syndrome:usize = fix_errors(codeword2, p);
+        try stdout.print("\nError detected at position {d}\n", .{syndrome});
+        try stdout.print("Fixed word: {s}\n", .{fixed_word});
+    }
+    else {
+        try stdout.print("Word has more than one bit flipped.\n", .{});
+    }
 }
 
-fn take_input(input_word:*std.array_list.Aligned(u8, null), stdin:anytype) !void {
+fn fix_errors(codeword:[]u8, p:usize) struct {[]u8, usize} {
+    var syndrome = alloc.alloc(u8, p) catch unreachable;
+    defer alloc.free(syndrome);
+    syndrome = check_parity(syndrome, codeword, p);
+
+    var value:usize = 0;
+    for (syndrome, 0..) |bit, i| {
+        value += @as(usize, bit-'0') << @intCast(i);
+    }
+
+    var fixed_word = codeword;
+    fixed_word[value-1] = if (fixed_word[value-1] == '1') '0' else '1';
+
+    return .{fixed_word, value};
+}
+
+fn check_for_errors(word1:[]u8, word2:[]u8) !u8 {
+    if (word1.len != word2.len) {
+        return error.mismatchedLengths;
+    }
+
+    var i:usize = 0;
+    var number_of_errors:u8 = 0;
+    while (i < word1.len or i < word2.len) : (i+=1) {
+        if (word1[i] == 'p' or word2[i] == 'p') {
+            continue;
+        }
+        if (word1[i] != word2[i]) {
+            number_of_errors+=1;
+        }
+    }
+    return number_of_errors;
+}
+
+fn take_input(input_word:*std.array_list.Aligned(u8, null), stdin:anytype) ![]u8 {
     var input_byte:[1]u8 = undefined;
 
     while (true) {
@@ -98,6 +129,7 @@ fn take_input(input_word:*std.array_list.Aligned(u8, null), stdin:anytype) !void
 
         try input_word.append(alloc, c);
     }
+    return @constCast(std.mem.trimEnd(u8, input_word.items, "\r"));
 }
 
 fn calculate_parity_bits(word_len:usize) usize {
@@ -133,12 +165,13 @@ fn make_new_word(new_word:[]u8, word:[]u8) []u8 {
     return new_word;
 }
 
-fn make_syndrome(syndrome:[]u1, new_word:[]u8, p:usize) []u1 {
+fn check_parity(p_bits:[]u8, new_word:[]u8, p:usize) []u8 {
     // calculate the values of parity bits
+    // k is to iterate through the parity bits
     var k:usize = 0;
-    // var final_new_word:[new_word.len]u1 = undefined;
     while (k < p) : (k+=1){
         const p_pos = std.math.pow(usize, 2, k);
+        // l is to iterate through the word
         var l:usize = 0;
         var sum:usize = 0;
         while (l < new_word.len) : (l+=1) {
@@ -146,24 +179,25 @@ fn make_syndrome(syndrome:[]u1, new_word:[]u8, p:usize) []u1 {
             // basically all positions checked by parity bit k will have that bit set to 1
             // so doing k AND position will give us whether the bit should be checked
             if (((l+1) & p_pos) != 0) {
-                sum += if (new_word[l] != 'p') new_word[l]-'0' else 0;
+                sum += if (new_word[l] != 'p') new_word[l] else '0';
             }
         }
         // std.debug.print("sum = {d}\n", .{sum});
-        syndrome[k] = if (sum%2==0) 0 else 1;
+        p_bits[k] = if (sum%2==0) '0' else '1';
     }
-    return syndrome;
+    return p_bits;
 }
 
-fn make_encoded_word(encoded_word:[]u1, syndrome:[]u1, new_word:[]u8) []u1 {
+fn make_codeword(codeword:[]u8, p_bits:[]u8, new_word:[]u8) []u8 {
+
     var j:usize = 0;
     for (new_word, 0..) |bit, i| {
         if (bit == 'p') {
-            encoded_word[i] = syndrome[j];
+            codeword[i] = p_bits[j];
             j+=1;
         } else {
-            encoded_word[i] = @intCast((new_word[i] - '0'));
+            codeword[i] = @intCast((new_word[i]));
         }
     }
-    return encoded_word;
+    return codeword;
 }
